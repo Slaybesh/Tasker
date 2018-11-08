@@ -73,14 +73,37 @@ async function anim4() {
 var func;
 // eval(func + '()')
 
+async function blink(scene, elem) {
+    return new Promise(async function(resolve) {
+        elemVisibility(scene, elem, true, 200)
+    });
+}
 
-function show() {
+function launch_task(task_name, par1, par2, ...parameters) {
+    let new_par1;
+    let new_par2;
+    
+    if (parameters.length > 0) {
+        new_par1 = `${par1}|${par2}`;
+        for (i in parameters) {new_par1 += `|${parameters[i]}`}
+    } else {
+        new_par1 = par1;
+        new_par2 = par2;
+    }
+
+    performTask(task_name, parseInt(priority) + 1, new_par1, new_par2)
+}
+
+// let higher_prio = parseInt(priority) + 1;
+async function show() {
     let scene = 'Test Scene'
 
-    elemVisibility(scene, 'Rectangle1', true, 300)
-    elemVisibility(scene, 'Rectangle11', true, 300)
-    elemVisibility(scene, 'Rectangle12', true, 300)
-    elemVisibility(scene, 'Rectangle13', true, 300)
+    launch_task('elemVisibility show', scene, 'Rectangle1', 300)
+    launch_task('elemVisibility show', scene, 'Rectangle11', 300)
+    launch_task('elemVisibility show', scene, 'Rectangle12', 300)
+    launch_task('elemVisibility show', scene, 'Rectangle13', 300)
+
+    flash('asdf')
 }
 
 show()

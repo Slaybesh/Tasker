@@ -1,29 +1,13 @@
 function sleep(ms) {return new Promise(resolve => setTimeout(resolve, ms))}
 
-function create_logger(path, debugging=true) {
-    writeFile(path, '', false);
-    return function(msg) {
-        if (debugging) {
-            var date = new Date(); 
-            let hours = '0' + date.getHours();
-            let min = '0' + date.getMinutes();
-            let sec = '0' + date.getSeconds();
-            let ms = '00' + date.getMilliseconds();
-            let time = hours.substr(-2) + ":" 
-                     + min.substr(-2) + ":" 
-                     + sec.substr(-2) + ":" 
-                     + ms.substr(-3);
-            writeFile(path, `${time}    ${msg}\n`, true);
-        }
-    }
-}
 
 logger = create_logger('Tasker/log/regular_checks.txt');
 
 async function regular_checks() {
     logger('start regular_checks')
     await roundr();
-    shell('settings put secure enabled_accessibility_services' + global('Accessibility_services'));
+    shell('settings put secure enabled_accessibility_services ' + global('Accessibility_services'), true);
+    // logger('shell input: ' + 'settings put secure enabled_accessibility_services' + global('Accessibility_services'))
     performTask('Zooper Disengaged');
     performTask('Zooper Reload Location');
     await remove_persistent();
@@ -53,4 +37,23 @@ async function roundr() {
     logger('end roundr')
 }
 
+function create_logger(path, debugging=false) {
+    writeFile(path, '', false);
+    return function(msg) {
+        if (debugging) {
+            var date = new Date(); 
+            let hours = '0' + date.getHours();
+            let min = '0' + date.getMinutes();
+            let sec = '0' + date.getSeconds();
+            let ms = '00' + date.getMilliseconds();
+            let time = hours.substr(-2) + ":" 
+                     + min.substr(-2) + ":" 
+                     + sec.substr(-2) + ":" 
+                     + ms.substr(-3);
+            writeFile(path, `${time}    ${msg}\n`, true);
+        }
+    }
+}
+
 regular_checks()
+
