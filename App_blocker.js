@@ -3,53 +3,42 @@ async function app_blocker() {
     let logger = create_logger('main', true)
 
     let t0 = performance.now();
-
-    // logger(`var par1: ${par1}`)
-    // let blocked = par1 ? par1 : 0;
     
     let blocked;
-    
-    let PACTIVE = glob.PACTIVE
-    logger('PACTIVE:', PACTIVE)
-    if (PACTIVE.includes('Disengaged Apps')) {
+    logger('PACTIVE:', pactive)
+    if (pactive.includes('Disengaged Apps')) {
         glob.append_package('Apps_disengaged', aipackage)
         blocked = 1;
     }
-    if (PACTIVE.includes('Pomo Apps')) {
+    if (pactive.includes('Pomo Apps')) {
         glob.append_package('Apps_pomo', aipackage)
         blocked = 1;
     }
-    if (PACTIVE.includes('Limited Apps')) {
+    if (pactive.includes('Limited Apps')) {
         glob.append_package('Apps_limited', aipackage)
         blocked = 0;
     }
     logger('blocked:', blocked)
 
-    if (blocked == undefined) {
-        flashLong('PACTIVE')
+    if (blocked == null) {
+        flashLong(pactive)
     }
 
     let app = get_app_json();
+    app.freq = app.freq + 1;
+
     let ui = new UI(blocked);
-    
-    // if (blocked || app.blocked_until > glob.TIMES) {
-    //     /* if in pomo or disengaged session or app is still blocked from usage */
-    //     ui.load(app);
-    //     logger('currently blocked');
-    // }
+
     if (app.freq > app.max_freq) {
         /* if app has been opened too many times */
         app = reset_vars(app);
         logger('max freq');
     }
-    
     if (glob.TIMES - app.last_used > app.reset_time) {
         /* if app hasnt been used in a while */
         app.dur = 0;
         app.freq = 0;
     } 
-
-    app.freq = app.freq + 1;
     
     logger('start part:', timer(t0));
     ui.load(app)
@@ -460,12 +449,6 @@ const create_logger = logging('Tasker/log/app_blocker.txt', true)
 
 
 let glob = {
-    // PACTIVE(profile) {
-    //     let logger = create_logger('PACTIVE')
-    //     let pactive = global('PACTIVE')
-    //     logger(pactive, pactive.includes(profile))
-    //     return pactive.includes(profile)
-    // },
 
     get PACTIVE() { return global('PACTIVE')},
     get TIMES() { return parseInt(global('TIMES')) },
@@ -493,5 +476,5 @@ let glob = {
 
 var aiapp;
 var aipackage;
-var par1;
+var pactive;
 app_blocker();
