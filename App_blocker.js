@@ -4,62 +4,105 @@ async function app_blocker() {
 
     let t0 = performance.now();
 
-    logger(`var par1: ${par1}`)
-    let blocked = par1 ? par1 : 0;
+    // logger(`var par1: ${par1}`)
+    // let blocked = par1 ? par1 : 0;
+    
+    let blocked;
+    
+    let PACTIVE = glob.PACTIVE
+    logger('PACTIVE:', PACTIVE)
+    if (PACTIVE.includes('Disengaged Apps')) {
+        glob.append_package('Apps_disengaged', aipackage)
+        blocked = 1;
+    }
+    if (PACTIVE.includes('Pomo Apps')) {
+        glob.append_package('Apps_pomo', aipackage)
+        blocked = 1;
+    }
+    if (PACTIVE.includes('Limited Apps')) {
+        glob.append_package('Apps_limited', aipackage)
+        blocked = 0;
+    }
+    logger('blocked:', blocked)
 
-    logger(`first blocked = ${blocked}`)
+    if (blocked == undefined) {
+        flashLong('PACTIVE')
+    }
 
+    let app = get_app_json();
     let ui = new UI(blocked);
-
-    if (blocked) {
-        logger('blocked. Pomo or Disengaged')
-        ui.load(app);
+    
+    // if (blocked || app.blocked_until > glob.TIMES) {
+    //     /* if in pomo or disengaged session or app is still blocked from usage */
+    //     ui.load(app);
+    //     logger('currently blocked');
+    // }
+    if (app.freq > app.max_freq) {
+        /* if app has been opened too many times */
+        app = reset_vars(app);
+        logger('max freq');
     }
     
-    let app = await get_app_json();
-    
-    
-    if (app.blocked_until > glob.TIMES) {
-        ui.load(app);
-        logger('currently blocked');
-    } else if (app.freq > app.max_freq) {
-        ui.load(app);
-        logger('max freq');
-        reset_vars(app);
-    } else if (glob.TIMES - app.last_used > app.reset_time) {
+    if (glob.TIMES - app.last_used > app.reset_time) {
+        /* if app hasnt been used in a while */
         app.dur = 0;
         app.freq = 0;
     } 
 
     app.freq = app.freq + 1;
+    
+    logger('start part:', timer(t0));
     ui.load(app)
-
-    let ai = {package: aipackage}
-
-    logger('start part: ' + timer(t0));
-
+    
     /* #### main loop #### */
+    let ai = {package: aipackage}
     let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
-    while (loop_packages.includes(ai.package) && global('TRUN').includes('App Blocker')) {
+
+    app_session:
+    while (true) {
 
         app.last_used = glob.TIMES;
 
-        // logger('ai.package: ' + ai.package);
-        launch_task('Notification.create', app.name, sec_to_time(app.max_dur - app.dur), 
-                                          'mw_image_timelapse', 5);
-        
         // await sleep(500);
-        ai = await get_current_app();
+        ai = await get_current_app()
+
+        /* ################ if out of app ################ */
+        if (!loop_packages.includes(ai.package)) {
+            logger('out of app')
+            let t1 = performance.now()
+
+            launch_task('Notification.cancel', app.name)
+            glob.save_global_app(app)
+
+            out_of_app:
+            while (true) {
+                ai = await get_current_app()
+
+                if (app.package.includes(ai.package)) {
+                    logger('back in app')
+                    break out_of_app;
+                } else if (elapsed(t1) > 10000) {
+                    logger('out of app for more than 10 sec')
+                    break app_session;
+                }
+                await sleep(300)
+            }
+        }
+
+        launch_task('Notification.create', app.name, sec_to_time(app.max_dur - app.dur),
+        'mw_image_timelapse', 5);
         
         if (app.dur > app.max_dur) {
-            reset_vars(app);
+            app = reset_vars(app);
             ui.load(app)
+            logger('app.dur > app.max_dur')
             break
-        } else if ((performance.now() - t0) % 5000) {
-            logger('save global var')
-            save_global_var(app)
-        } 
-
+        } else if ((elapsed(t0)) > 5000) {
+            /* if 5sec have passed, save var */
+            // logger('save global var')
+            t0 = performance.now()
+            glob.save_global_app(app)
+        }
 
         if ([app.package, 'com.android.systemui'].includes(ai.package)) {
             /* only add to duration if in app or system ui */
@@ -67,10 +110,8 @@ async function app_blocker() {
         }
     }
 
-    launch_task('Notification.cancel', app.name);
-    save_global_var(app)
     await await_task('regular_checks');
-    logger('out of app');
+    logger('exit()');
     exit();
 }
 
@@ -78,7 +119,7 @@ async function app_blocker() {
 /* ################################ app_blocker helpers ################################ */
 /* ##################################################################################### */
 //#region
-async function get_app_json() {
+function get_app_json() {
     let logger = create_logger('get_app_json', true)
 
     // let ai = await get_current_app();
@@ -121,9 +162,11 @@ async function get_app_json() {
 
 async function get_current_app() {
     let logger = create_logger('get_current_app', false)
+    
     let t0 = performance.now();
     await await_task('AutoInput UI Query');
     let ai = JSON.parse(global('Return_AutoInput_UI_Query'));
+    
     logger(global('Return_AutoInput_UI_Query'))
     logger(timer(t0));
     return ai
@@ -135,13 +178,11 @@ function reset_vars(app) {
     app.dur = 0;
     app.freq = 0;
     app.blocked_until = glob.TIMES + app.reset_time;
-    save_global_var(app)
+    glob.save_global_app(app)
     
     launch_task('Notification.snooze');
-}
 
-function save_global_var(app) {
-    setGlobal(app.package_var, JSON.stringify(app, null, 2));
+    return app
 }
 //#endregion
 
@@ -153,7 +194,6 @@ function save_global_var(app) {
 
 class UI {
     constructor(blocked=false) {
-        
         this.blocked = blocked;
         this.ui = 'app'
     }
@@ -201,28 +241,27 @@ class UI {
         let line1;
         let line2;
         if (this.blocked) {
-            if (Pomo_until > curr_time) {
-                line1 = 'Currently in Pomo Session.'
-                line2 = `Come back at ${unix_to_time(Pomo_until)}`;
-                logger('pomo')
-            } else if (Disengaged_until > curr_time) {
+            if (Disengaged_until > curr_time) {
                 line1 = 'Currently Disengaged.';
                 line2 = `Come back at ${unix_to_time(Disengaged_until)}`;
-                logger('disengaged until')
             } else if (Disengaged) {
                 line1 = 'Currently Disengaged.';
                 line2 = 'Come back tomorrow.';
-                logger('disengaged')
+            } else if (Pomo_until > curr_time) {
+                line1 = 'Currently in Pomo Session.'
+                line2 = `Come back at ${unix_to_time(Pomo_until)}`;
+            } else {
+                line1 = 'Currently blocked.'
+                line2 = `Come back at the fuck do I know.`;
             }
+
         } else {
             if (app.blocked_until > curr_time) {
                 line1 = 'Currently blocked.';
                 line2 = `Come back at ${unix_to_time(app.blocked_until)}`;
-                logger('currently blocked')
             } else {
                 line1 = `Time used: ${sec_to_time(app.dur)} out of ${sec_to_time(app.max_dur)}`;
                 line2 = `Times opened: ${app.freq} out of ${app.max_freq}`;
-                logger('normal ui')
             }
         }
 
@@ -279,9 +318,9 @@ class UI {
                 break;
                 
             case '/':
-                let bigger_num = small_num1 * small_num2;
+                let numerator = small_num1 * small_num2;
                 result = small_num1;
-                question = `${bigger_num} / ${small_num2}  = `
+                question = `${numerator} / ${small_num2}  = `
             
             // case '-/':
             //     result = (max_large - min_large) / randint(2, 4);
@@ -323,7 +362,7 @@ function sleep(ms) {return new Promise(resolve => setTimeout(resolve, ms))}
 
 function launch_task(task_name, par1, par2, ...parameters) {
 
-    let logger = create_logger('launch_task')
+    let logger = create_logger('launch_task', false)
     let new_par1;
     let new_par2;
     
@@ -335,7 +374,7 @@ function launch_task(task_name, par1, par2, ...parameters) {
         new_par2 = par2;
     }
 
-    logger(task_name, new_par1, new_par2)
+    logger(task_name, new_par1, new_par2, ...parameters)
     performTask(task_name, parseInt(priority) + 1, new_par1, new_par2)
 }
 
@@ -356,6 +395,10 @@ async function await_task(task_name, ...args) {
 
 function timer(start_time) {
     return String(parseInt(performance.now() - start_time) / 1000) + ' sec'
+}
+
+function elapsed(start_time) {
+    return performance.now() - start_time
 }
 
 
@@ -406,7 +449,7 @@ function logging(path, global_debugging=true) {
                 for (i in input_msg) {
                     msg += ` ${input_msg[i]}`
                 }
-                writeFile(path, `${time}:    ${name}:    ${msg}\n`, true);
+                writeFile(path, `${time}:  ${name}: ${msg}\n`, true);
             }
         }
     }
@@ -415,11 +458,37 @@ function logging(path, global_debugging=true) {
 
 const create_logger = logging('Tasker/log/app_blocker.txt', true)
 
+
 let glob = {
-    get TIMES() {return parseInt(global('TIMES'))},
-    get Disengaged() {return parseInt(global('Disengaged'))},
-    get Disengaged_until() {return parseInt(global('Disengaged_until'))},
-    get Pomo_until() {return parseInt(global('Pomo_until'))}
+    // PACTIVE(profile) {
+    //     let logger = create_logger('PACTIVE')
+    //     let pactive = global('PACTIVE')
+    //     logger(pactive, pactive.includes(profile))
+    //     return pactive.includes(profile)
+    // },
+
+    get PACTIVE() { return global('PACTIVE')},
+    get TIMES() { return parseInt(global('TIMES')) },
+    get Disengaged() { return parseInt(global('Disengaged')) },
+    get Disengaged_until() { return parseInt(global('Disengaged_until')) },
+    get Pomo_until() { return parseInt(global('Pomo_until')) },
+
+
+    save_global_app(app) { setGlobal(app.package_var, JSON.stringify(app, null, 2)) },
+
+    append_package(list_name, package) {
+        let logger = create_logger('append_package')
+
+        let list = JSON.parse(global(list_name))
+
+        logger(`${list_name}: ${list}, ${package}`)
+
+        if (!list.includes(package)) {
+            list.push(package)
+            logger('added')
+            setGlobal(list_name, JSON.stringify(list, null, 2))
+        }
+    },
 }
 
 var aiapp;
