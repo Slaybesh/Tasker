@@ -3,16 +3,9 @@ async function app_blocker() {
     let logger = create_logger('main', true)
 
     let t0 = performance.now();
-    await_task('regular_checks');
-    // logger('regular_checks time: ' + timer(t0))
 
     logger(`var par1: ${par1}`)
-    let blocked;
-    if (par1) {
-        blocked = par1;
-    } else {
-        blocked = 0;
-    }
+    let blocked = par1 ? par1 : 0;
 
     logger(`first blocked = ${blocked}`)
 
@@ -24,6 +17,7 @@ async function app_blocker() {
     }
     
     let app = await get_app_json();
+    
     
     if (app.blocked_until > glob.TIMES) {
         ui.load(app);
@@ -42,8 +36,10 @@ async function app_blocker() {
 
     let ai = {package: aipackage}
 
-    let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
     logger('start part: ' + timer(t0));
+
+    /* #### main loop #### */
+    let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
     while (loop_packages.includes(ai.package) && global('TRUN').includes('App Blocker')) {
 
         app.last_used = glob.TIMES;
@@ -54,14 +50,15 @@ async function app_blocker() {
         
         // await sleep(500);
         ai = await get_current_app();
-        setGlobal(app.package_var, JSON.stringify(app, null, 2));
-
+        
         if (app.dur > app.max_dur) {
-            ui.blocked = 1;
-            ui.load(app)
             reset_vars(app);
+            ui.load(app)
             break
-        }
+        } else if ((performance.now() - t0) % 5000) {
+            logger('save global var')
+            save_global_var(app)
+        } 
 
 
         if ([app.package, 'com.android.systemui'].includes(ai.package)) {
@@ -71,7 +68,8 @@ async function app_blocker() {
     }
 
     launch_task('Notification.cancel', app.name);
-    setGlobal(app.package_var, JSON.stringify(app, null, 2));
+    save_global_var(app)
+    await await_task('regular_checks');
     logger('out of app');
     exit();
 }
@@ -81,31 +79,34 @@ async function app_blocker() {
 /* ##################################################################################### */
 //#region
 async function get_app_json() {
-    /* vars_str is a JSON string containing 
-       app information */
-
-    // let logger = create_logger('get_app_json', true)
+    let logger = create_logger('get_app_json', true)
 
     // let ai = await get_current_app();
     // let ai = JSON.parse(global('Return_AutoInput_UI_Query'));
 
-    // logger('var aipackage = ' + aipackage)
-    let package_var = aipackage.replace(/\./g, '_');
-    // let package_var = ai.package.replace(/\./g, '_');
+    let ai = {
+        app: aiapp,
+        package: aipackage
+    }
+
+    logger('ai.package = ' + ai.package)
+    let package_var = ai.package.replace(/\./g, '_');
     package_var = package_var.charAt(0).toUpperCase() + package_var.slice(1);
 
     let app_json_str = global(package_var);
     let app_json;
     if (app_json_str) {
+        /* app_json exists */
         app_json = JSON.parse(app_json_str);
     } else {
+        /* create new app_json */
         app_json = {
             max_dur: 600,
             reset_time: 3600,
             max_freq: 10,
 
-            name: aiapp,
-            package: aipackage,
+            name: ai.app,
+            package: ai.package,
             package_var: package_var,
             dur: 0,
             freq: 0,
@@ -117,6 +118,7 @@ async function get_app_json() {
     return app_json
 }
 
+
 async function get_current_app() {
     let logger = create_logger('get_current_app', false)
     let t0 = performance.now();
@@ -127,14 +129,19 @@ async function get_current_app() {
     return ai
 }
 
+
 function reset_vars(app) {
 
     app.dur = 0;
     app.freq = 0;
     app.blocked_until = glob.TIMES + app.reset_time;
-    setGlobal(app.package_var, JSON.stringify(app, null, 2));
+    save_global_var(app)
     
-    await_task('Notification.snooze');
+    launch_task('Notification.snooze');
+}
+
+function save_global_var(app) {
+    setGlobal(app.package_var, JSON.stringify(app, null, 2));
 }
 //#endregion
 
@@ -351,8 +358,8 @@ function timer(start_time) {
     return String(parseInt(performance.now() - start_time) / 1000) + ' sec'
 }
 
-function sec_to_time(seconds) {
 
+function sec_to_time(seconds) {
     let pad = (n, padding) => {
         n = String(n);
         return n.length >= padding ? n : new Array(padding - n.length + 1).join('0') + n;
@@ -368,6 +375,7 @@ function sec_to_time(seconds) {
     
     return time_left
 }
+
 
 function unix_to_time(unix_ts) {
     let date = new Date(unix_ts * 1000);
