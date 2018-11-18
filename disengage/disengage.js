@@ -3,7 +3,7 @@ function disengage() {
         setGlobal('Disengaged', 1);
         performTask('Remove Notifications');
         shell('settings put secure accessibility_display_daltonizer_enabled 1', true);
-        enableProfile('WakeUp', true);
+        enableProfile('Wake Up', true);
         // setWifi(false);
         // mobileData(false);
     }

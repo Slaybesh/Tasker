@@ -5,14 +5,23 @@ logger = create_logger('Tasker/log/regular_checks.txt');
 
 async function regular_checks() {
     logger('start regular_checks')
-    await roundr();
-    shell('settings put secure enabled_accessibility_services ' + global('Accessibility_services'), true);
-    // logger('shell input: ' + 'settings put secure enabled_accessibility_services' + global('Accessibility_services'))
+    let promise_roundr =  roundr();
+    let promise_remove_pers =  remove_persistent();
+    let promise_set_access = set_accessibility()
+
     performTask('Zooper Disengaged');
     performTask('Zooper Reload Location');
-    await remove_persistent();
+       
+    await promise_roundr;
+    await promise_remove_pers;
+    await promise_set_access;
     logger('end regular_checks')
     exit();
+}
+
+async function set_accessibility() {
+    shell('settings put secure enabled_accessibility_services 0', true);
+    shell('settings put secure enabled_accessibility_services ' + global('Accessibility_services'), true);
 }
 
 async function remove_persistent() {
@@ -25,6 +34,7 @@ async function remove_persistent() {
     }
     logger('end remove_persistent')
 }
+
 async function roundr() {
     logger('start roundr')
     let id_roundr = shell("echo proc/$(pidof mohammad.adib.roundr) | cut -f 2 -d '/'", true);

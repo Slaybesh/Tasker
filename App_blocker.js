@@ -1,56 +1,29 @@
 async function app_blocker() {
 
-    let logger = create_logger('main', true)
-
     let t0 = performance.now();
+    let logger = create_logger('main', true)
     
-    let blocked;
-    logger('PACTIVE:', pactive)
-    if (pactive.includes('Disengaged Apps')) {
-        glob.append_package('Apps_disengaged', aipackage)
-        blocked = 1;
-    }
-    if (pactive.includes('Pomo Apps')) {
-        glob.append_package('Apps_pomo', aipackage)
-        blocked = 1;
-    }
-    if (pactive.includes('Limited Apps')) {
-        glob.append_package('Apps_limited', aipackage)
-        blocked = 0;
-    }
-    logger('blocked:', blocked)
-
-    if (blocked == null) {
-        flashLong(pactive)
-    }
-
-    let app = get_app_json();
-    app.freq = app.freq + 1;
-
+    /* check if blocked by seeing which profile its running from */
+    /* ####TODO####
+       if starting app, put aipackage in a global var so it doesnt run twice
+       from different profiles.
+        */
+    let blocked = running_profile()
     let ui = new UI(blocked);
-
-    if (app.freq > app.max_freq) {
-        /* if app has been opened too many times */
-        app = reset_vars(app);
-        logger('max freq');
-    }
-    if (glob.TIMES - app.last_used > app.reset_time) {
-        /* if app hasnt been used in a while */
-        app.dur = 0;
-        app.freq = 0;
-    } 
     
-    logger('start part:', timer(t0));
+    let app = get_app_json();
+    app = process_app(app)
+
     ui.load(app)
     
-    /* #### main loop #### */
-    let ai = {package: aipackage}
+    logger('start part:', timer(t0));
+    
+    // let ai = {package: glob.aipackage}
     let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
-
-    app_session:
+    app_session: /* #### main loop #### */
     while (true) {
 
-        app.last_used = glob.TIMES;
+        app.last_used = glob.TIMEMS;
 
         // await sleep(500);
         ai = await get_current_app()
@@ -61,41 +34,47 @@ async function app_blocker() {
             let t1 = performance.now()
 
             launch_task('Notification.cancel', app.name)
-            glob.save_global_app(app)
+            glob.save_app_json(app)
 
-            out_of_app:
+            out_of_session:
             while (true) {
                 ai = await get_current_app()
 
                 if (app.package.includes(ai.package)) {
                     logger('back in app')
-                    break out_of_app;
-                } else if (elapsed(t1) > 10000) {
-                    logger('out of app for more than 10 sec')
+                    break out_of_session;
+                } else if (elapsed(t1) > glob.keep_session_open_time) {
+                    logger('close session')
                     break app_session;
                 }
-                await sleep(300)
+                await sleep(500)
             }
         }
 
-        launch_task('Notification.create', app.name, sec_to_time(app.max_dur - app.dur),
-        'mw_image_timelapse', 5);
+        app_notification(app)
         
-        if (app.dur > app.max_dur) {
-            app = reset_vars(app);
+        /*  exceeded app.max_duration */
+        if (app.dur >= app.max_dur) {
+            app = set_blocked_until(app);
             ui.load(app)
             logger('app.dur > app.max_dur')
             break
-        } else if ((elapsed(t0)) > 5000) {
+        } else if ((elapsed(t0)) > glob.save_data_interval) {
             /* if 5sec have passed, save var */
             // logger('save global var')
             t0 = performance.now()
-            glob.save_global_app(app)
+            glob.save_app_json(app)
         }
 
+        /* only add to duration if in app or system ui */
         if ([app.package, 'com.android.systemui'].includes(ai.package)) {
-            /* only add to duration if in app or system ui */
-            app.dur = app.dur + (glob.TIMES - app.last_used);
+            /* ####TODO#### test %WIN for current window, if in notification 
+                            thing, add to time, if on recent apps page, dont */
+            let time_past = (glob.TIMEMS - app.last_used)
+            logger('time_past:', time_past)
+            logger('app dur before:', app.dur)
+            app.dur += time_past
+            logger('app dur after:', app.dur)
         }
     }
 
@@ -108,19 +87,42 @@ async function app_blocker() {
 /* ################################ app_blocker helpers ################################ */
 /* ##################################################################################### */
 //#region
+function running_profile() {
+    let logger = create_logger('running_profile')
+    let blocked;
+
+    if (glob.pactive.includes('Disengaged Apps')) {
+        glob.append_package('Apps_disengaged', glob.aipackage)
+        blocked = 1;
+    }
+    if (glob.pactive.includes('Pomo Apps')) {
+        glob.append_package('Apps_pomo', glob.aipackage)
+        blocked = 1;
+    }
+    if (glob.pactive.includes('Limited Apps')) {
+        glob.append_package('Apps_limited', glob.aipackage)
+        blocked = 0;
+    }
+
+    if (blocked == null) {
+        flashLong('No App Blocker Profile Running')
+        // exit()
+    }
+
+    logger('blocked:', blocked)
+    logger('PACTIVE:', glob.pactive)
+    return blocked
+}
+
+
 function get_app_json() {
     let logger = create_logger('get_app_json', true)
 
     // let ai = await get_current_app();
     // let ai = JSON.parse(global('Return_AutoInput_UI_Query'));
 
-    let ai = {
-        app: aiapp,
-        package: aipackage
-    }
-
-    logger('ai.package = ' + ai.package)
-    let package_var = ai.package.replace(/\./g, '_');
+    logger('aipackage = ' + glob.aipackage)
+    let package_var = glob.aipackage.replace(/\./g, '_');
     package_var = package_var.charAt(0).toUpperCase() + package_var.slice(1);
 
     let app_json_str = global(package_var);
@@ -131,12 +133,12 @@ function get_app_json() {
     } else {
         /* create new app_json */
         app_json = {
-            max_dur: 600,
-            reset_time: 3600,
+            max_dur: 600 * 1000,
+            reset_time: 3600 * 1000,
             max_freq: 10,
 
-            name: ai.app,
-            package: ai.package,
+            name: glob.aiapp,
+            package: glob.aipackage,
             package_var: package_var,
             dur: 0,
             freq: 0,
@@ -149,6 +151,23 @@ function get_app_json() {
 }
 
 
+function process_app(app) {
+
+    app.freq = app.freq + 1;
+    /* if app has been opened too many times */
+    if (app.freq >= app.max_freq) {
+        app = set_blocked_until(app);
+        logger('max freq');
+    }
+    /* if app hasnt been used in a while */
+    if (glob.TIMEMS - app.last_used > app.reset_time) {
+        app.dur = 0;
+        app.freq = 0;
+    }
+    return app
+}
+
+
 async function get_current_app() {
     let logger = create_logger('get_current_app', false)
     
@@ -157,21 +176,27 @@ async function get_current_app() {
     let ai = JSON.parse(global('Return_AutoInput_UI_Query'));
     
     logger(global('Return_AutoInput_UI_Query'))
-    logger(timer(t0));
+    logger('took:', timer(t0));
     return ai
 }
 
 
-function reset_vars(app) {
+function set_blocked_until(app) {
 
     app.dur = 0;
     app.freq = 0;
-    app.blocked_until = glob.TIMES + app.reset_time;
-    glob.save_global_app(app)
+    app.blocked_until = glob.TIMEMS + app.reset_time;
+    glob.save_app_json(app)
     
     launch_task('Notification.snooze');
 
     return app
+}
+
+
+function app_notification(app) {
+    launch_task('Notification.create', app.name,
+        sec_to_time(app.max_dur - app.dur), 'mw_image_timelapse', 5);
 }
 //#endregion
 
@@ -209,7 +234,7 @@ class UI {
         this.visibility('Line1', true)
         this.visibility('Line2', true)
 
-        if (this.blocked || app.blocked_until > glob.TIMES) {
+        if (this.blocked || app.blocked_until > glob.TIMEMS) {
             this.visibility('Button Close', true)
         } else {
             this.visibility('Math Question', true)
@@ -222,7 +247,7 @@ class UI {
     setInformation(app) {
         let logger = create_logger('UI: setInformation', true)
 
-        let curr_time = glob.TIMES;
+        let curr_time = glob.TIMEMS;
         let Pomo_until = glob.Pomo_until;
         let Disengaged_until = glob.Disengaged_until;
         let Disengaged = glob.Disengaged;
@@ -261,7 +286,7 @@ class UI {
     }
 
     createMathExercise(app) {
-        let logger = create_logger('UI: Math', false)
+        let logger = create_logger('UI: Math', true)
 
         let randint = (min, max) => {return Math.floor(Math.random() * (max - min + 1)) + min}
 
@@ -272,7 +297,7 @@ class UI {
         let small_range;
         let big_range;
 
-        if (this.blocked || app.blocked_until > glob.TIMES) {
+        if (this.blocked || app.blocked_until > glob.TIMEMS) {
             small_range = [9, 20];
             big_range = [100, 4000];
         } else {
@@ -320,7 +345,7 @@ class UI {
             //     question = `${big_num1} + ${big_num2}  =`
         }
 
-        logger(`${operator}, ${small_num1}, ${small_num2}, ${big_num1}, ${big_num2}`)
+        // logger(`${operator}, ${small_num1}, ${small_num2}, ${big_num1}, ${big_num2}`)
         logger(`question: ${question} result: ${result}`)
         elemText(this.ui, 'Math Question', 'repl', question);
         elemText(this.ui, 'Math Result', 'repl', result);
@@ -447,34 +472,43 @@ function logging(path, global_debugging=true) {
 
 const create_logger = logging('Tasker/log/app_blocker.txt', true)
 
+var aiapp;
+var aipackage;
+var pactive;
 
 let glob = {
 
+    aiapp: aiapp,
+    aipackage: aipackage,
+    pactive: pactive,
+
+    save_data_interval: 5 * 1000, //s * ms
+    keep_session_open_time: 10 * 1000, //s * ms
+    
     get PACTIVE() { return global('PACTIVE')},
     get TIMES() { return parseInt(global('TIMES')) },
+    get TIMEMS() { return parseInt(global('TIMEMS')) },
     get Disengaged() { return parseInt(global('Disengaged')) },
     get Disengaged_until() { return parseInt(global('Disengaged_until')) },
     get Pomo_until() { return parseInt(global('Pomo_until')) },
 
 
-    save_global_app(app) { setGlobal(app.package_var, JSON.stringify(app, null, 2)) },
+    save_app_json(app) { setGlobal(app.package_var, JSON.stringify(app, null, 2)) },
 
     append_package(list_name, package) {
         let logger = create_logger('append_package')
 
         let list = JSON.parse(global(list_name))
 
-        logger(`${list_name}: ${list}, ${package}`)
+        // logger(`${list_name}: ${list}, ${package}`)
 
         if (!list.includes(package)) {
             list.push(package)
-            logger('added')
+            logger(`${package} added to ${list_name}`)
             setGlobal(list_name, JSON.stringify(list, null, 2))
         }
-    },
+    }
 }
 
-var aiapp;
-var aipackage;
-var pactive;
+
 app_blocker();
