@@ -90,7 +90,6 @@ function launch_task(task_name, par1, par2, ...parameters) {
   performTask(task_name, parseInt(priority) + 1, new_par1, new_par2)
 }
 
-
 async function await_task(task_name, ...args) {
 
   let logger = create_logger('await_task', false)
@@ -132,6 +131,7 @@ function logging(path, global_debugging = true) {
     }
   }
 }
+
 const create_logger = logging('Tasker/log/wake_up.txt', true)
 
 let glob = {
