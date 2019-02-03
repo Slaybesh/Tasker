@@ -31,6 +31,71 @@ async function app_blocker() {
 
 /* ################################ app_blocker functions ################################ */
 //#region
+async function run_main_loop(app, ui) {
+  let logger = create_logger('main_loop', true)
+
+  let t0 = performance.now();
+
+  let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
+  app_session: /* #### main loop #### */
+  while (true) {
+
+    app.last_used = glob.TIMEMS;
+
+    // await sleep(500);
+    ai = await get_current_open_app()
+
+    /* ################ if out of app ################ */
+    if (!loop_packages.includes(ai.package)) {
+      logger('out of app')
+      let t1 = performance.now()
+
+      launch_task('Notification.cancel', app.name)
+      glob.save_app_data(app)
+
+      out_of_session:
+      while (true) {
+        ai = await get_current_open_app()
+
+        if (app.package.includes(ai.package)) {
+          logger('back in app')
+          break out_of_session;
+        } else if (elapsed(t1) > glob.keep_session_open_time) {
+          logger('close session')
+          break app_session;
+        }
+        await sleep(500)
+      }
+    }/*################ if out of app ################ */
+
+
+    create_notification(app, logger)
+    t0 = save_app_data(app, t0)
+
+
+    /*  exceeded app.max_duration */
+    if (app.dur / 1000 >= app.max_dur) {
+      app = set_blocked_until(app);
+      ui.load(app)
+      logger('app.dur > app.max_dur')
+      break app_session;
+    }
+
+
+    /* only add to duration if in app or system ui */
+    if ([app.package, 'com.android.systemui'].includes(ai.package)) {
+      /* ####TODO#### test %WIN for current window, if in notification 
+                      thing, add to time, if on recent apps page, dont */
+      let time_past = (glob.TIMEMS - app.last_used)
+      logger('time_past:', time_past)
+      logger('app dur before:', app.dur)
+      app.dur += time_past
+      logger('app dur after:', app.dur)
+    }
+  }
+}
+
+
 function running_profile() {
   let logger = create_logger('running_profile')
   let blocked;
@@ -77,8 +142,8 @@ function get_app_data() {
   } else {
     /* create new app_json */
     app_json = {
-      max_dur: 600 * 1000,
-      reset_time: 3600 * 1000,
+      max_dur: 600,
+      reset_time: 3600,
       max_freq: 10,
 
       name: glob.aiapp,
@@ -113,69 +178,6 @@ function init_app(app) {
     app.freq = 0;
   }
   return app
-}
-
-
-async function run_main_loop(app, ui) {
-  let logger = create_logger('main_loop', true)
-
-  let loop_packages = [app.package, 'com.android.systemui', 'net.dinglisch.android.taskerm'];
-  app_session: /* #### main loop #### */
-  while (true) {
-
-    app.last_used = glob.TIMEMS;
-
-    // await sleep(500);
-    ai = await get_current_open_app()
-
-    /* ################ if out of app ################ */
-    if (!loop_packages.includes(ai.package)) {
-      logger('out of app')
-      let t1 = performance.now()
-
-      launch_task('Notification.cancel', app.name)
-      glob.save_app_data(app)
-
-      out_of_session:
-      while (true) {
-        ai = await get_current_open_app()
-
-        if (app.package.includes(ai.package)) {
-          logger('back in app')
-          break out_of_session;
-        } else if (elapsed(t1) > glob.keep_session_open_time) {
-          logger('close session')
-          break app_session;
-        }
-        await sleep(500)
-      }
-    }/*################ if out of app ################ */
-
-
-    create_notification(app)
-    t0 = save_app_data(app, t0)
-
-
-    /*  exceeded app.max_duration */
-    if (app.dur / 1000 >= app.max_dur) {
-      app = set_blocked_until(app);
-      ui.load(app)
-      logger('app.dur > app.max_dur')
-      break app_session;
-    }
-
-
-    /* only add to duration if in app or system ui */
-    if ([app.package, 'com.android.systemui'].includes(ai.package)) {
-      /* ####TODO#### test %WIN for current window, if in notification 
-                      thing, add to time, if on recent apps page, dont */
-      let time_past = (glob.TIMEMS - app.last_used)
-      logger('time_past:', time_past)
-      logger('app dur before:', app.dur)
-      app.dur += time_past
-      logger('app dur after:', app.dur)
-    }
-  }
 }
 //#endregion
 
@@ -218,9 +220,11 @@ function set_blocked_until(app) {
 }
 
 
-function create_notification(app) {
+function create_notification(app, logger) {
+  let time_left = sec_to_time(app.max_dur - parseInt(app.dur / 1000))
+  logger('time_left:', time_left)
   launch_task('Notification.create', app.name,
-    sec_to_time(app.max_dur - app.dur / 1000), 'mw_image_timelapse', 5);
+    time_left, 'mw_image_timelapse', 5);
 }
 //#endregion
 //#endregion
@@ -256,16 +260,16 @@ class UI {
 
   showElements(app) {
 
-    this.visibility('Loading', false)
-    this.visibility('Line1', true)
-    this.visibility('Line2', true)
+    this.elem_hide('Loading')
+    this.elem_show('Line1')
+    this.elem_show('Line2')
 
     if (this.blocked || app.blocked_until > glob.TIMES) {
-      this.visibility('Button Close', true)
+      this.elem_show('Button Close')
     } else {
-      this.visibility('Math Question', true)
-      this.visibility('Math Input', true)
-      this.visibility('Button Hide', true)
+      this.elem_show('Math Question')
+      this.elem_show('Math Input')
+      this.elem_show('Button Hide')
 
     }
   }
@@ -378,15 +382,9 @@ class UI {
   }
 
   /* ################################ Helpers ################################ */
-  visibility(elem, show, speed = 200) {
-    let logger = create_logger('UI: showElem')
 
-    let task_name = 'elemVisibility ';
-    if (show) { task_name += 'show' }
-    else { task_name += 'hide' }
-
-    launch_task(task_name, this.ui, elem, speed)
-  }
+  elem_show(elem, speed=200) { launch_task('elemVisibility show', this.ui, elem, speed) }
+  elem_hide(elem, speed=200) { launch_task('elemVisibility hide', this.ui, elem, speed) }
 }
 //#endregion
 
