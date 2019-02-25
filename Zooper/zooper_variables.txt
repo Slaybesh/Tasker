@@ -1,8 +1,16 @@
-awefasdf\a
-werfg
-asergs
-ertb
-setbawefawsefwef
-awrev
-
-aerv
+{
+    "time": "[oy]-120[/oy]\n[s]50.0[/s]\n",
+    "time_circle": "[ox]314[/ox]\n[oy]-220[/oy]\n[rw]628[/rw]\n[rh]4[/rh]\n[c]30ffffff[/c]\n",
+    "time_indicator": "[oy]-120[/oy]\n[ar]100[/ar]\n[rw]8[/rw]\n[rh]4[/rh]\n[as]$(((#DH# * 60 + #Dm#) / 1440) * 360 + 180)$[/as]\n[r]$(((#DH# * 60 + #Dm#) / 1440) * 360 + 180)$[/r]\n",
+    "time_tick_0": "[oy]-120[/oy]\n[ar]100[/ar]\n[c]80ffffff[/c]\n[rh]6[/rh]\n[rw]2[/rw]\n[as]180[/as]\n[r]0[/r]\n",
+    "time_tick_6": "[oy]-120[/oy]\n[ar]100[/ar]\n[c]80ffffff[/c]\n[rh]6[/rh]\n[rw]2[/rw]\n[as]270[/as]\n[r]90[/r]\n",
+    "time_tick_12": "[oy]-120[/oy]\n[ar]100[/ar]\n[c]80ffffff[/c]\n[rh]6[/rh]\n[rw]2[/rw]\n[as]0[/as]\n[r]0[/r]\n",
+    "time_tick_18": "[oy]-120[/oy]\n[ar]100[/ar]\n[c]80ffffff[/c]\n[rh]6[/rh]\n[rw]2[/rw]\n[as]90[/as]\n[r]90[/r]\n",
+    "sr_bar": "[oy]-120[/oy]\n[ar]130[/ar]\n[rw]2[/rw]\n[rh]30[/rh]\n[as]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180))$[/as]\n[r]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180))$[/r]\n",
+    "ss_bar": "[oy]-120[/oy]\n[ar]130[/ar]\n[rw]2[/rw]\n[rh]30[/rh]\n[as]$((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180))$[/as]\n[r]$((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180))$[/r]\n",
+    "sr_time": "[oy]-120[/oy]\n[ar]130[/ar]\n[s]12[/s]\n[as]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180) - 4)$[/as]\n[r]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180) + 90)$[/r]\n",
+    "ss_time": "[oy]-120[/oy]\n[ar]130[/ar]\n[s]12[/s]\n[as]$((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180) + 4)$[/as]\n[r]$((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180) - 90)$[/r]\n",
+    "sr_hiding_box": "[oy]-120[/oy]\n[ar]130[/ar]\n[rw]30[/rw]\n[rh]30[/rh]\n[as]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180) - 6)$[/as]\n[r](((#ARH# * 60 + #ARm#) / 1440) * 360 + 180)[/r]\n",
+    "ss_hiding_box": "[oy]-120[/oy]\n[ar]130[/ar]\n[rw]30[/rw]\n[rh]30[/rh]\n[as]$((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180) + 6)$[/as]\n[r](((#ASH# * 60 + #ASm#) / 1440) * 360 + 180)[/r]\n",
+    "sun": "[oy]-120[/oy]\n[ar]120[/ar]\n[as]$((((#ARH# * 60 + #ARm#) / 1440) * 360 + 180) + (((((#ASH# * 60 + #ASm#) / 1440) * 360 + 180) - (((#ARH# * 60 + #ARm#) / 1440) * 360 + 180)) * (#ARTm# / ((#ASH# * 60 + #ASm#) - (#ARH# * 60 + #ARm#)))))$[/as]\n[c]$[#DH# >= #ARH# && #DH# < #ASH#] || [#DH# = #ASH# && #Dm#<=#ASm#]?ffffffff:00000000$[/c]\n"
+}
